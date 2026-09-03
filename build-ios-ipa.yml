@@ -1,0 +1,59 @@
+name: Build RK ROBOT PRO iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create fresh iOS platform
+        run: |
+          cp ios/Runner/Info.plist /tmp/RK_ROBOT_PRO_Info.plist
+          rm -rf ios
+          flutter create --platforms=ios --org com.rkrobotpro .
+          cp /tmp/RK_ROBOT_PRO_Info.plist ios/Runner/Info.plist
+
+      - name: Force separate bundle identifier
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("ios/Runner.xcodeproj/project.pbxproj")
+          s = p.read_text()
+          s = re.sub(
+              r'PRODUCT_BUNDLE_IDENTIFIER = [^;]+;',
+              'PRODUCT_BUNDLE_IDENTIFIER = com.rkrobot.procontrol;',
+              s
+          )
+          p.write_text(s)
+          PY
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Make IPA
+        run: |
+          rm -rf Payload
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry RK_ROBOT_PRO_unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RK_ROBOT_PRO_unsigned_IPA
+          path: RK_ROBOT_PRO_unsigned.ipa
